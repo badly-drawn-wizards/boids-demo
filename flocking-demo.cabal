@@ -1,0 +1,42 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.31.2.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: e2badf2b5206638b23bb54d938a2940b1d65546c9c0089d94e313ca54a5c4cc1
+
+name:           flocking-demo
+version:        0.1.0.0
+description:    A demo of flocking behaviour
+homepage:       https://github.com/badly-drawn-wizards/flocking-demo#readme
+bug-reports:    https://github.com/badly-drawn-wizards/flocking-demo/issues
+author:         Reuben Steenekamp
+maintainer:     reuben.steenekamp@gmail.com
+copyright:      2020 Reuben Steenekamp
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+
+source-repository head
+  type: git
+  location: https://github.com/badly-drawn-wizards/flocking-demo
+
+executable flock
+  main-is: Main.hs
+  other-modules:
+      Paths_flocking_demo
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      KdTree
+    , MonadRandom
+    , base
+    , containers
+    , generic-lens
+    , gloss
+    , lens
+    , linear
+    , mtl
+  default-language: Haskell2010

@@ -1,29 +1,50 @@
-{-# LANGUAGE TupleSections, DataKinds, TypeApplications, DeriveGeneric #-}
+{-# LANGUAGE TupleSections, DataKinds, TypeApplications, DeriveGeneric, BangPatterns, BlockArguments, FlexibleInstances #-}
+
 module Main where
 
 import Control.Lens
-import Control.Applicative
+
+import Control.Monad
 import Control.Monad.Random.Class
 import Data.Generics.Product
+import Data.Semigroup
 import Data.Monoid
+import Data.Trees.KdTree as K
+import Data.Function
 import GHC.Generics hiding (to)
+import GHC.Float (float2Double)
 import Linear.V2
 import Linear.Vector
 import Linear.Metric
 import Graphics.Gloss
 
-data Boid = Boid
-  { pos :: V2 Float
-  , vel :: V2 Float
-  , acc :: V2 Float
 
-  , flockRadius :: Float
-  , alignment :: Float -> Float
-  , cohesion :: Float -> Float
-  } deriving Generic
+data Boid = Boid
+  { pos :: !(V2 Float)
+  , vel :: !(V2 Float)
+  , acc :: !(V2 Float)
+
+  , flockNum :: !Int
+  , airResistance :: !Float
+  , yearning :: !Float
+  , infected :: Bool
+
+  } deriving (Eq, Generic)
+
+instance K.Point (V2 Float) where
+  dimension _ = 2
+  coord 0 = float2Double . view _x
+  coord 1 = float2Double . view _y
+  coord _ = error "Invalid coordinate"
+  dist2 x y = float2Double $ qd x y
+
+instance K.Point Boid where
+  dimension = dimension . pos
+  coord d = coord d . pos
+  dist2 = dist2 `on` pos
 
 data Scene = Scene
-  { boids :: [Boid]
+  { sceneBoids :: KdTree Boid
   } deriving Generic
 
 type TimeDelta = Float
@@ -32,42 +53,50 @@ type TimeDelta = Float
 _norm :: (Floating a, Eq a) => Traversal' (V2 a) a
 _norm = filtered (/= zero) . lens norm (\ v d -> signorm v ^* d)
 
-updateBoid :: (Foldable f) => TimeDelta -> f Boid -> (Boid -> Boid)
-updateBoid dt boids boid = boid & updateFlocking & updatePhysics
+updateBoid :: TimeDelta -> KdTree Boid -> (Boid -> Boid)
+updateBoid dt boids boid = boid
+      & the @"pos" +~ dt *^ vel boid
+      & the @"vel" +~ dt *^ acc boid
+      & the @"acc" .~ sumV
+        [ center & maybe zero (\ center' -> (center' ^-^ pos boid) & _norm %~ cohesion)
+        , heading & maybe zero (\ heading' -> (heading' ^-^ vel boid ) & _norm %~ alignment)
+        , vel boid & _norm %~ \ speed -> (targetSpeed - speed) * targetSpeedWeight
+        , -pos boid ^* yearning boid
+        ]
+      & the @"infected" %~ maybe id ((||) . (< infectionDistance)) closestInfected
   where
 
-    isNeighbour :: Boid -> Boid -> Bool
-    isNeighbour x y =  (pos x `distance` pos y) < flockRadius x
+    targetSpeed = 50
+    targetSpeedWeight = 10
+    alignment = const 20
+    cohesion d = (1 - (50 / d)) * 50
+    infectionDistance = 30
 
-    neighbours :: Foldable f => Fold (f Boid) Boid
-    neighbours = folded . filtered (isNeighbour boid)
 
-    (center, heading) = boids
-      & foldMapOf neighbours (\ b -> (Sum . pos $ b, Sum . vel $ b, Sum 1))
-      & (\ (Sum totalPos, Sum totalHeading, Sum count) -> (totalPos ^/ fromIntegral count, totalHeading ^/ fromIntegral count))
+    neighbours :: Fold (KdTree Boid) Boid
+    neighbours = to (\kd -> drop 1 $ kNearestNeighbors kd (flockNum boid + 1) boid) . folded
 
-    updateFlocking :: Boid -> Boid
-    updateFlocking boid = boid
-      & the @"acc" .~ sumV
-        [ (center ^-^ pos boid) & _norm %~ (cohesion boid)
-        , (heading ^-^ vel boid ) & _norm %~ (alignment boid)
-        ]
+    (center, heading, closestInfected) = boids
+      & foldMapOf neighbours
+      (\ b ->
+          ( Sum . pos $ b
+          , Sum . vel $ b
+          , guard (infected b) >> (Just . Min) (pos boid `distance` pos b)
+          , Sum 1 :: Sum Int))
+      & (\ (Sum totalPos, Sum totalHeading, closestInfected,  Sum count) ->
+           ( guard (count > 0) >> pure (totalPos ^/ fromIntegral count)
+           , guard (count > 0) >> pure (totalHeading ^/ fromIntegral count)
+           , getMin <$> closestInfected))
 
-    -- Euler integration. :-O
-    updatePhysics :: Boid -> Boid
-    updatePhysics boid = boid
-      & the @"pos" +~ dt *^ (vel boid)
-      & the @"vel" +~ dt *^ (acc boid)
-
-updateBoids :: (Traversable t) => TimeDelta -> t Boid -> t Boid
-updateBoids dt = selfIndex <. traversed %@~ updateBoid dt
+updateBoids :: TimeDelta -> KdTree Boid -> KdTree Boid
+updateBoids dt boids = K.fromList (boids ^.. folded . to (updateBoid dt boids))
 
 updateScene :: TimeDelta -> Scene -> Scene
-updateScene dt = the @"boids" %~ updateBoids dt
+updateScene dt = the @"sceneBoids" %~ updateBoids dt
 
 
 displayScene :: Scene -> Picture
-displayScene = foldOf $ the @"boids"
+displayScene = foldOf $ the @"sceneBoids"
   . folded
   . to displayBoid
   where
@@ -75,25 +104,31 @@ displayScene = foldOf $ the @"boids"
       let
         (V2 x y) = pos boid
       in
-        translate x y $ Circle 20
+        translate x y $ color (if infected boid then red else blue) $ circleSolid $ 5
 
 generateScene :: MonadRandom m => m Scene
-generateScene = [1..20] & traverseOf traversed (const generateBoid) & fmap Scene
+generateScene = replicate 200 generateBoid & sequenceOf traversed & fmap K.fromList & fmap Scene
 
 generateBoid :: MonadRandom m => m Boid
 generateBoid = do
-    boidPos <- (V2 <$> getRandomR (0, 100) <*> getRandomR (0, 100))
+    posR <- (V2 <$> getRandomR (-1, 1) <*> getRandomR (-1, 1)) ^* 500
+    velR <- (V2 <$> getRandomR (-1, 1) <*> getRandomR (-1, 1)) ^* 50
+    colorR <- makeColor <$> getRandomR (0.3, 1) <*> getRandomR (0.3, 1) <*> getRandomR (0.3, 1) <*> pure 1
     return $ Boid
-      { pos = boidPos
-      , vel = zero
+      { pos = posR
+      , vel = velR
       , acc = zero
-      , flockRadius = 10
-      , alignment = const 1
-      , cohesion = const 1
+      , infected = False
+      , flockNum = 5
+      , yearning = 0.001
+      , airResistance = 0.1
       }
 
 
 main :: IO ()
 main = do
-  init <- generateScene
-  simulate FullScreen black 30 init displayScene (const updateScene)
+  initialScene <- generateScene
+  simulate FullScreen black 20 initialScene displayScene (const updateScene)
+
+-- try do some profiling
+-- maybe have a space

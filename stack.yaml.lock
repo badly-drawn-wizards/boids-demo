@@ -18,6 +18,13 @@ packages:
       sha256: fb1034e11e42909804bd350e3e0de02886371e1935778a3dece3dd3177520c4a
   original:
     hackage: haskell-lsp-types-0.19.0.0@sha256:b8b462948f506226f324e0e56010cc9b47df90ec9ebad3b18caa9390d5427287,2941
+- completed:
+    hackage: KdTree-0.2.2.1@sha256:9f1276f1870652f4d93ddac4da39d8d6503de1723376d5ff80d75753e3f6c3d6,1480
+    pantry-tree:
+      size: 319
+      sha256: 3e4537793171c72e3d76726e13d4867689a4103665241cb11743bd4236276bb1
+  original:
+    hackage: KdTree-0.2.2.1@sha256:9f1276f1870652f4d93ddac4da39d8d6503de1723376d5ff80d75753e3f6c3d6,1480
 snapshots:
 - completed:
     size: 491387

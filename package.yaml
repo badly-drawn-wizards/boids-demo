@@ -1,14 +1,10 @@
-name:                boids-demo
+name:                flocking-demo
 version:             0.1.0.0
-github:              "githubuser/boids-demo"
+github:              "badly-drawn-wizards/flocking-demo"
 license:             BSD3
-author:              "Author name here"
-maintainer:          "example@example.com"
-copyright:           "2020 Author name here"
-
-extra-source-files:
-- README.md
-- ChangeLog.md
+author:              "Reuben Steenekamp"
+maintainer:          "reuben.steenekamp@gmail.com"
+copyright:           "2020 Reuben Steenekamp"
 
 # Metadata used when publishing your package
 # synopsis:            Short description of your package
@@ -17,11 +13,11 @@ extra-source-files:
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
-description:         Please see the README on GitHub at <https://github.com/githubuser/boids-demo#readme>
+description:         A demo of flocking behaviour
 
 
 executables:
-  boids-demo-exe:
+  flock:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
@@ -31,18 +27,10 @@ executables:
     dependencies:
     - base
     - containers
+    - KdTree
     - lens
     - generic-lens
     - linear
     - gloss
     - mtl
     - MonadRandom
-
-tests:
-  boids-demo-test:
-    main:                Spec.hs
-    source-dirs:         test
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
